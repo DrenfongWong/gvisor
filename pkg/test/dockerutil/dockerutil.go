@@ -205,6 +205,7 @@ func (n *DockerNetwork) Cleanup() error {
 }
 
 // Docker contains the name and the runtime of a docker container.
+// DO NOT USE: Actively being removed.
 type Docker struct {
 	logger   testutil.Logger
 	Runtime  string
@@ -217,6 +218,9 @@ type Docker struct {
 //
 // Names of containers will be unique.
 func MakeDocker(logger testutil.Logger) *Docker {
+	logger.Logf("WARNING: Please do not use this if you're writing something new. " +
+		"Use the container struct instead.")
+
 	// Slashes are not allowed in container names.
 	name := testutil.RandomID(logger.Name())
 	name = strings.ReplaceAll(name, "/", "-")
@@ -258,81 +262,6 @@ func (d *Docker) CopyFiles(opts *RunOpts, targetDir string, sources ...string) {
 		Target: targetDir,
 		Mode:   ReadOnly,
 	})
-}
-
-// Mount describes a mount point inside the container.
-type Mount struct {
-	// Source is the path outside the container.
-	Source string
-
-	// Target is the path inside the container.
-	Target string
-
-	// Mode tells whether the mount inside the container should be readonly.
-	Mode MountMode
-}
-
-// Link informs dockers that a given container needs to be made accessible from
-// the container being configured.
-type Link struct {
-	// Source is the container to connect to.
-	Source *Docker
-
-	// Target is the alias for the container.
-	Target string
-}
-
-// RunOpts are options for running a container.
-type RunOpts struct {
-	// Image is the image relative to images/. This will be mangled
-	// appropriately, to ensure that only first-party images are used.
-	Image string
-
-	// Memory is the memory limit in kB.
-	Memory int
-
-	// Ports are the ports to be allocated.
-	Ports []int
-
-	// WorkDir sets the working directory.
-	WorkDir string
-
-	// ReadOnly sets the read-only flag.
-	ReadOnly bool
-
-	// Env are additional environment variables.
-	Env []string
-
-	// User is the user to use.
-	User string
-
-	// Privileged enables privileged mode.
-	Privileged bool
-
-	// CapAdd are the extra set of capabilities to add.
-	CapAdd []string
-
-	// CapDrop are the extra set of capabilities to drop.
-	CapDrop []string
-
-	// Pty indicates that a pty will be allocated. If this is non-nil, then
-	// this will run after start-up with the *exec.Command and Pty file
-	// passed in to the function.
-	Pty func(*exec.Cmd, *os.File)
-
-	// Foreground indicates that the container should be run in the
-	// foreground. If this is true, then the output will be available as a
-	// return value from the Run function.
-	Foreground bool
-
-	// Mounts is the list of directories/files to be mounted inside the container.
-	Mounts []Mount
-
-	// Links is the list of containers to be connected to the container.
-	Links []Link
-
-	// Extra are extra arguments that may be passed.
-	Extra []string
 }
 
 // args returns common arguments.

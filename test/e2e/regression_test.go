@@ -27,7 +27,7 @@ import (
 // Prerequisite: the directory where the socket file is created must not have
 // been open for write before bind(2) is called.
 func TestBindOverlay(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Run the container.

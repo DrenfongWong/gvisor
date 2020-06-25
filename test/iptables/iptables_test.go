@@ -37,7 +37,7 @@ func singleTest(t *testing.T, test TestCase) {
 		t.Fatalf("no test found with name %q. Has it been registered?", test.Name())
 	}
 
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Create and start the container.

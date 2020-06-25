@@ -37,7 +37,7 @@ import (
 )
 
 func TestHelloWorld(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Run the basic container.
@@ -107,7 +107,7 @@ func testHTTPServer(t *testing.T, port int) {
 }
 
 func TestHttpd(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Start the container.
@@ -135,7 +135,7 @@ func TestHttpd(t *testing.T) {
 }
 
 func TestNginx(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Start the container.
@@ -163,7 +163,7 @@ func TestNginx(t *testing.T) {
 }
 
 func TestMysql(t *testing.T) {
-	server := dockerutil.MakeDocker(t)
+	server := dockerutil.MakeContainer(t)
 	defer server.CleanUp()
 
 	// Start the container.
@@ -180,7 +180,7 @@ func TestMysql(t *testing.T) {
 	}
 
 	// Generate the client and copy in the SQL payload.
-	client := dockerutil.MakeDocker(t)
+	client := dockerutil.MakeContainer(t)
 	defer client.CleanUp()
 
 	// Tell mysql client to connect to the server and execute the file in
@@ -189,8 +189,8 @@ func TestMysql(t *testing.T) {
 		Image: "basic/mysql",
 		Links: []dockerutil.Link{
 			{
-				Source: server,
-				Target: "mysql",
+				CSource: server,
+				Target:  "mysql",
 			},
 		},
 	}
@@ -206,7 +206,7 @@ func TestMysql(t *testing.T) {
 }
 
 func TestTomcat(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Start the server.
@@ -240,7 +240,7 @@ func TestTomcat(t *testing.T) {
 }
 
 func TestRuby(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Execute the ruby workload.
@@ -283,7 +283,7 @@ func TestRuby(t *testing.T) {
 }
 
 func TestStdio(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	wantStdout := "hello stdout"

@@ -28,11 +28,9 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -56,7 +54,7 @@ func httpRequestSucceeds(client http.Client, server string, port int) error {
 
 // TestLifeCycle tests a basic Create/Start/Stop docker container life cycle.
 func TestLifeCycle(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Start the container.
@@ -96,7 +94,7 @@ func TestPauseResume(t *testing.T) {
 		t.Skip("Checkpoint is not supported.")
 	}
 
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Start the container.
@@ -160,7 +158,7 @@ func TestCheckpointRestore(t *testing.T) {
 		t.Skip("Pause/resume is not supported.")
 	}
 
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Start the container.
@@ -175,7 +173,7 @@ func TestCheckpointRestore(t *testing.T) {
 	if err := d.Checkpoint("test"); err != nil {
 		t.Fatalf("docker checkpoint failed: %v", err)
 	}
-	if _, err := d.Wait(30 * time.Second); err != nil {
+	if err := d.WaitTimeout(30 * time.Second); err != nil {
 		t.Fatalf("wait failed: %v", err)
 	}
 
@@ -204,7 +202,7 @@ func TestCheckpointRestore(t *testing.T) {
 
 // Create client and server that talk to each other using the local IP.
 func TestConnectToSelf(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Creates server that replies "server" and exists. Sleeps at the end because
@@ -216,14 +214,14 @@ func TestConnectToSelf(t *testing.T) {
 	}
 
 	// Finds IP address for host.
-	ip, err := d.Exec(dockerutil.RunOpts{}, "/bin/sh", "-c", "cat /etc/hosts | grep ${HOSTNAME} | awk '{print $1}'")
+	ip, err := d.Exec(dockerutil.ExecOpts{}, "/bin/sh", "-c", "cat /etc/hosts | grep ${HOSTNAME} | awk '{print $1}'")
 	if err != nil {
 		t.Fatalf("docker exec failed: %v", err)
 	}
 	ip = strings.TrimRight(ip, "\n")
 
 	// Runs client that sends "client" to the server and exits.
-	reply, err := d.Exec(dockerutil.RunOpts{}, "/bin/sh", "-c", fmt.Sprintf("echo client | nc %s 8080", ip))
+	reply, err := d.Exec(dockerutil.ExecOpts{}, "/bin/sh", "-c", fmt.Sprintf("echo client | nc %s 8080", ip))
 	if err != nil {
 		t.Fatalf("docker exec failed: %v", err)
 	}
@@ -238,15 +236,15 @@ func TestConnectToSelf(t *testing.T) {
 }
 
 func TestMemLimit(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// N.B. Because the size of the memory file may grow in large chunks,
 	// there is a minimum threshold of 1GB for the MemTotal figure.
-	allocMemory := 1024 * 1024
+	allocMemory := 1024 * 1024 // In kb.
 	out, err := d.Run(dockerutil.RunOpts{
 		Image:  "basic/alpine",
-		Memory: allocMemory, // In kB.
+		Memory: allocMemory * 1024, // In bytes.
 	}, "sh", "-c", "cat /proc/meminfo | grep MemTotal: | awk '{print $2}'")
 	if err != nil {
 		t.Fatalf("docker run failed: %v", err)
@@ -272,13 +270,13 @@ func TestMemLimit(t *testing.T) {
 }
 
 func TestNumCPU(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	// Read how many cores are in the container.
 	out, err := d.Run(dockerutil.RunOpts{
-		Image: "basic/alpine",
-		Extra: []string{"--cpuset-cpus=0"},
+		Image:      "basic/alpine",
+		CpusetCpus: "0",
 	}, "sh", "-c", "cat /proc/cpuinfo | grep 'processor.*:' | wc -l")
 	if err != nil {
 		t.Fatalf("docker run failed: %v", err)
@@ -291,53 +289,6 @@ func TestNumCPU(t *testing.T) {
 	}
 	if want := 1; got != want {
 		t.Errorf("MemTotal got: %d, want: %d", got, want)
-	}
-}
-
-// TestJobControl tests that job control characters are handled properly.
-func TestJobControl(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
-	defer d.CleanUp()
-
-	// Start the container with an attached PTY.
-	if _, err := d.Run(dockerutil.RunOpts{
-		Image: "basic/alpine",
-		Pty: func(_ *exec.Cmd, ptmx *os.File) {
-			// Call "sleep 100" in the shell.
-			if _, err := ptmx.Write([]byte("sleep 100\n")); err != nil {
-				t.Fatalf("error writing to pty: %v", err)
-			}
-
-			// Give shell a few seconds to start executing the sleep.
-			time.Sleep(2 * time.Second)
-
-			// Send a ^C to the pty, which should kill sleep, but
-			// not the shell.  \x03 is ASCII "end of text", which
-			// is the same as ^C.
-			if _, err := ptmx.Write([]byte{'\x03'}); err != nil {
-				t.Fatalf("error writing to pty: %v", err)
-			}
-
-			// The shell should still be alive at this point. Sleep
-			// should have exited with code 2+128=130. We'll exit
-			// with 10 plus that number, so that we can be sure
-			// that the shell did not get signalled.
-			if _, err := ptmx.Write([]byte("exit $(expr $? + 10)\n")); err != nil {
-				t.Fatalf("error writing to pty: %v", err)
-			}
-		},
-	}, "sh"); err != nil {
-		t.Fatalf("docker run failed: %v", err)
-	}
-
-	// Wait for the container to exit.
-	got, err := d.Wait(5 * time.Second)
-	if err != nil {
-		t.Fatalf("error getting exit code: %v", err)
-	}
-	// Container should exit with code 10+130=140.
-	if want := syscall.WaitStatus(140); got != want {
-		t.Errorf("container exited with code %d want %d", got, want)
 	}
 }
 
@@ -356,7 +307,7 @@ func TestWorkingDirCreation(t *testing.T) {
 				name += "-readonly"
 			}
 			t.Run(name, func(t *testing.T) {
-				d := dockerutil.MakeDocker(t)
+				d := dockerutil.MakeContainer(t)
 				defer d.CleanUp()
 
 				opts := dockerutil.RunOpts{
@@ -378,7 +329,7 @@ func TestWorkingDirCreation(t *testing.T) {
 
 // TestTmpFile checks that files inside '/tmp' are not overridden.
 func TestTmpFile(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	opts := dockerutil.RunOpts{Image: "tmpfile"}
@@ -401,7 +352,7 @@ func TestTmpMount(t *testing.T) {
 	if err := ioutil.WriteFile(filepath.Join(dir, "file.txt"), []byte("123"), 0666); err != nil {
 		t.Fatalf("WriteFile(): %v", err)
 	}
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	opts := dockerutil.RunOpts{
@@ -426,7 +377,7 @@ func TestTmpMount(t *testing.T) {
 // runsc to hide the incoherence of FDs opened before and after overlayfs
 // copy-up on the host.
 func TestHostOverlayfsCopyUp(t *testing.T) {
-	d := dockerutil.MakeDocker(t)
+	d := dockerutil.MakeContainer(t)
 	defer d.CleanUp()
 
 	if _, err := d.Run(dockerutil.RunOpts{
